@@ -1,24 +1,26 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module Main (main) where
 
-import Prelude hiding (interact)
-import Blaze.ByteString.Builder
-import Blaze.ByteString.Builder.Char8
-import Control.Applicative
-import Control.Monad
-import Data.Aeson
-import Data.ByteString.Char8 (unpack)
-import Data.ByteString.Lazy.Char8 (ByteString, interact)
-import Data.Char
-import Data.Foldable (asum)
-import Data.Function (on)
-import qualified Data.HashMap.Lazy as HM (toList)
-import Data.List (intercalate, sortBy, groupBy, intersperse)
-import Data.Maybe
-import Data.Monoid
-import Data.Ord (comparing)
-import Data.Text.Encoding (encodeUtf8)
+import           Blaze.ByteString.Builder
+import           Blaze.ByteString.Builder.Char8
+import           Control.Applicative
+import           Control.Monad
+import           Data.Aeson
+import           Data.ByteString.Char8          (unpack)
+import           Data.ByteString.Lazy.Char8     (ByteString, interact)
+import           Data.Char
+import           Data.Foldable                  (asum)
+import           Data.Function                  (on)
+import qualified Data.HashMap.Lazy              as HM (toList)
+import           Data.List                      (groupBy, intercalate,
+                                                 intersperse, sortBy)
+import           Data.Maybe
+import           Data.Monoid
+import           Data.Ord                       (comparing)
+import           Data.Text.Encoding             (encodeUtf8)
+import           Prelude                        hiding (interact)
 
 
 --------------------------------------------------------------------------------
@@ -38,6 +40,7 @@ groupCmds (Cmds cmds) =
              , "list"
              , "set"
              , "sorted_set"
+             , "hyperloglog"
              , "hash"
              -- , "pubsub" commands implemented in Database.Redis.PubSub
              -- , "transactions" implemented in Database.Redis.Transactions
@@ -73,12 +76,12 @@ blacklist = [ manual "AUTH" ["auth"]
                 ["zrangebyscore", "zrangebyscoreWithscores"
                 ,"zrangebyscoreLimit", "zrangebyscoreWithscoresLimit"]
             , manual "ZREVRANGE" ["zrevrange", "zrevrangeWithscores"]
-            , manual "ZREVRANGEBYSCORE" 
+            , manual "ZREVRANGEBYSCORE"
                 ["zrevrangebyscore", "zrevrangebyscoreWithscores"
                 ,"zrevrangebyscoreLimit", "zrevrangebyscoreWithscoresLimit"]
             , manual "ZUNIONSTORE" ["zunionstore","zunionstoreWeights"]
             , unimplemented "MONITOR"        -- debugging command
-            , unimplemented "SYNC"           -- internal command            
+            , unimplemented "SYNC"           -- internal command
             , unimplemented "SHUTDOWN"       -- kills server, throws exception
             , unimplemented "DEBUG SEGFAULT" -- crashes the server
             ]
@@ -151,7 +154,7 @@ instance FromJSON Arg where
             [typ1,typ2]   <- arg .: "type"
             return $ Pair Arg{ argName = name1, argType = typ1 }
                           Arg{ argName = name2, argType = typ2 }
-        -- example: ZREVRANGEBYSCORE 
+        -- example: ZREVRANGEBYSCORE
         parseCommand = do
             s <- arg .: "command"
             return $ Command s
@@ -195,7 +198,7 @@ unimplementedCmds =
         , cmdDescriptionLink cmd
         , fromString ")\n"
         , fromString "--\n"
-        ]                             
+        ]
 
 exportList :: [Cmd] -> Builder
 exportList cmds =
@@ -211,19 +214,20 @@ exportList cmds =
     exportCmd cmd@Cmd{..}
         | implemented cmd = exportCmdNames cmd
         | otherwise       = mempty
-    
+
     implemented Cmd{..} =
         case lookup cmdName blacklist of
             Nothing       -> True
             Just (Just _) -> True
             Just Nothing  -> False
-    
+
     translateGroup Cmd{..} = case cmdGroup of
         "generic"      -> "Keys"
         "string"       -> "Strings"
         "list"         -> "Lists"
         "set"          -> "Sets"
         "sorted_set"   -> "Sorted Sets"
+        "hyperloglog"  -> "HyperLogLog"
         "hash"         -> "Hashes"
         -- "pubsub"       ->
         -- "transactions" -> "Transactions"
@@ -237,10 +241,10 @@ exportCmdNames Cmd{..} = types `mappend` functions
   where
     types = mconcat $ flip map typeNames
         (\name -> mconcat [fromString name, fromString ",\n"])
-        
+
     functions = mconcat $ flip map funNames
         (\name -> mconcat [fromString name, fromString ", ", haddock, newline])
-      
+
     funNames = case lookup cmdName blacklist of
         Nothing            -> [camelCase cmdName]
         Just (Just (xs,_)) -> xs
@@ -315,7 +319,7 @@ fromCmd cmd@Cmd{..}
             , fromString " )"
             ]
     name = camelCase cmdName
-    
+
 retType :: Cmd -> Builder
 retType Cmd{..} = maybe err translate cmdRetType
   where
@@ -340,7 +344,7 @@ retType Cmd{..} = maybe err translate cmdRetType
         "reply"        -> "Reply"
         "time"         -> "(Integer,Integer)"
         _              -> error $ "untranslated return type: " ++ t
-    
+
 
 argumentList :: Arg -> Builder
 argumentList a = fromString " ++ " `mappend` go a
@@ -395,7 +399,7 @@ camelCase s = case split (map toLower s) of
   where
     upcaseFirst []     = ""
     upcaseFirst (c:cs) = toUpper c : cs
-    
+
     -- modified version of Data.List.words
     split s = case dropWhile (not . isAlphaNum) s of
                 "" -> []

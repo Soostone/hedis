@@ -55,6 +55,11 @@ hset, -- |Set the string value of a hash field (<http://redis.io/commands/hset>)
 hsetnx, -- |Set the value of a hash field, only if the field does not exist (<http://redis.io/commands/hsetnx>).
 hvals, -- |Get all the values in a hash (<http://redis.io/commands/hvals>).
 
+-- ** HyperLogLog
+pfadd, -- |Adds the specified elements to the specified HyperLogLog. (<http://redis.io/commands/pfadd>).
+pfcount, -- |Return the approximated cardinality of the set(s) observed by the HyperLogLog at key(s). (<http://redis.io/commands/pfcount>).
+pfmerge, -- |Merge N different HyperLogLogs into a single one. (<http://redis.io/commands/pfmerge>).
+
 -- ** Lists
 blpop, -- |Remove and get the first element in a list, or block until one is available (<http://redis.io/commands/blpop>).
 brpop, -- |Remove and get the last element in a list, or block until one is available (<http://redis.io/commands/brpop>).
@@ -367,6 +372,13 @@ info
     => m (f ByteString)
 info  = sendRequest (["INFO"] )
 
+pfmerge
+    :: (RedisCtx m f)
+    => ByteString -- ^ destkey
+    -> [ByteString] -- ^ sourcekey
+    -> m (f Status)
+pfmerge destkey sourcekey = sendRequest (["PFMERGE"] ++ [encode destkey] ++ map encode sourcekey )
+
 sdiff
     :: (RedisCtx m f)
     => [ByteString] -- ^ key
@@ -493,6 +505,12 @@ rpop
     -> m (f (Maybe ByteString))
 rpop key = sendRequest (["RPOP"] ++ [encode key] )
 
+pfcount
+    :: (RedisCtx m f)
+    => [ByteString] -- ^ key
+    -> m (f Integer)
+pfcount key = sendRequest (["PFCOUNT"] ++ map encode key )
+
 incrbyfloat
     :: (RedisCtx m f)
     => ByteString -- ^ key
@@ -604,6 +622,13 @@ brpop
     -> Integer -- ^ timeout
     -> m (f (Maybe (ByteString,ByteString)))
 brpop key timeout = sendRequest (["BRPOP"] ++ map encode key ++ [encode timeout] )
+
+pfadd
+    :: (RedisCtx m f)
+    => ByteString -- ^ key
+    -> [ByteString] -- ^ element
+    -> m (f Integer)
+pfadd key element = sendRequest (["PFADD"] ++ [encode key] ++ map encode element )
 
 hsetnx
     :: (RedisCtx m f)
